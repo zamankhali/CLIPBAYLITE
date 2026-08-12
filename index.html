@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClipBay — cut any YouTube video</title>
+<style>
+  * { box-sizing: border-box; }
+
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(-3%, 2%) scale(1.05); }
+    100% { transform: translate(0, 0) scale(1); }
+  }
+
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(160deg, #0a1f2e 0%, #0d2b3d 35%, #0a3a4a 65%, #063040 100%);
+    color: #eaf6fa;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 56px 18px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Soft moving light blobs behind the glass -- this is what makes the
+     panel look like it's floating in water rather than just "blurry". */
+  body::before, body::after {
+    content: "";
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(60px);
+    z-index: 0;
+    animation: drift 14s ease-in-out infinite;
+  }
+  body::before {
+    width: 60vw;
+    height: 60vw;
+    top: -10%;
+    left: -15%;
+    background: radial-gradient(circle, rgba(64,200,220,0.35), transparent 70%);
+  }
+  body::after {
+    width: 55vw;
+    height: 55vw;
+    bottom: -15%;
+    right: -10%;
+    background: radial-gradient(circle, rgba(30,140,190,0.3), transparent 70%);
+    animation-delay: -7s;
+  }
+
+  .card {
+    max-width: 460px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+  }
+  .kicker {
+    font-size: 10px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: #a9e8f5;
+    margin-bottom: 10px;
+    text-align: center;
+    opacity: 0.85;
+  }
+  h1 {
+    font-size: 30px;
+    font-weight: 300;
+    letter-spacing: 0.01em;
+    margin: 0 0 8px;
+    text-align: center;
+    color: #ffffff;
+  }
+  p.sub {
+    color: #bfe6f0;
+    font-size: 13px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+    text-align: center;
+    opacity: 0.85;
+  }
+
+  /* The glass panel itself: translucent fill + blur of whatever's behind
+     it + a thin bright edge, which is what sells the "water/glass" look. */
+  .panel {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.25),
+      inset 0 0 40px rgba(120,220,240,0.05);
+  }
+
+  label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #bfe6f0;
+    margin-bottom: 8px;
+    margin-top: 20px;
+    opacity: 0.8;
+  }
+  label:first-of-type { margin-top: 0; }
+
+  input, select {
+    width: 100%;
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 10px;
+    padding: 13px 14px;
+    color: #ffffff;
+    font-size: 14px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: rgba(140,230,250,0.7);
+    background: rgba(255,255,255,0.1);
+  }
+  input::placeholder { color: rgba(230,245,250,0.4); }
+  select:disabled { color: rgba(230,245,250,0.4); }
+  select option { color: #0a1f2e; }
+
+  .clip-count-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .clip-count-row input { width: 90px; text-align: center; }
+  .clip-count-row span {
+    font-size: 12px;
+    color: #bfe6f0;
+    opacity: 0.8;
+  }
+  .clip-block {
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .clip-block .clip-label {
+    font-size: 11px;
+    color: #a9e8f5;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    opacity: 0.9;
+  }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+
+  button {
+    width: 100%;
+    margin-top: 28px;
+    background: linear-gradient(135deg, rgba(120,220,240,0.85), rgba(60,160,200,0.85));
+    backdrop-filter: blur(10px);
+    color: #06202b;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: rgba(255,255,255,0.06);
+    color: rgba(230,245,250,0.35);
+    border-color: rgba(255,255,255,0.1);
+    cursor: not-allowed;
+  }
+  button.secondary {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #bfe6f0;
+    margin-top: 10px;
+  }
+
+  .status {
+    margin-top: 18px;
+    font-size: 12px;
+    color: #bfe6f0;
+    text-align: center;
+    opacity: 0.85;
+  }
+  .error { color: #ffb199; opacity: 1; }
+  .footer-note {
+    font-size: 10px;
+    color: rgba(230,245,250,0.45);
+    text-align: center;
+    margin-top: 22px;
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="kicker">ClipBay</div>
+    <h1>Cut your moment.</h1>
+    <p class="sub">Paste a link, choose your timestamps, receive your clips.</p>
+
+    <div class="panel">
+      <label>YouTube URL</label>
+      <input id="url" type="text" placeholder="https://youtube.com/watch?v=..." />
+
+      <label>Quality</label>
+      <select id="quality" disabled>
+        <option value="">Paste a link first...</option>
+      </select>
+
+      <label>How many clips? (max 20)</label>
+      <div class="clip-count-row">
+        <input id="clipCount" type="number" min="1" max="20" value="1" />
+        <span>clip(s) from this video</span>
+      </div>
+
+      <button id="buildFieldsBtn" class="secondary" type="button">Set timestamps</button>
+
+      <div id="clipFields"></div>
+
+      <button id="submitBtn" type="button" disabled>Cut my clip(s)</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="footer-note">Timestamps auto-format as you type — e.g. 1509 becomes 15:09</div>
+  </div>
+
+  <script>
+    const API_BASE = window.CLIPBAY_API_BASE || "http://localhost:8080";
+
+    const clipCountInput = document.getElementById("clipCount");
+    const buildFieldsBtn = document.getElementById("buildFieldsBtn");
+    const clipFieldsEl = document.getElementById("clipFields");
+    const submitBtn = document.getElementById("submitBtn");
+    const statusEl = document.getElementById("status");
+    const urlInput = document.getElementById("url");
+    const qualitySelect = document.getElementById("quality");
+
+    let videoMeta = null; // { durationSeconds, maxHeight, minQualityHeight }
+
+    /**
+     * Builds the quality dropdown based on what this specific video
+     * actually offers -- never shows "4K" for a video that tops out at
+     * 720p, never shows below the 480p floor.
+     */
+    function populateQualityOptions(maxHeight, minQualityHeight) {
+      const standardRungs = [480, 720, 1080];
+      const available = standardRungs.filter((h) => h >= minQualityHeight && h <= maxHeight);
+
+      qualitySelect.innerHTML = "";
+
+      available.forEach((h) => {
+        const opt = document.createElement("option");
+        opt.value = String(h);
+        opt.textContent = `${h}p`;
+        qualitySelect.appendChild(opt);
+      });
+
+      // "Best available" -- if the source exceeds 1080p (e.g. 1440p/4K),
+      // label it with the real number rather than just saying "best".
+      const bestOpt = document.createElement("option");
+      bestOpt.value = "best";
+      bestOpt.textContent = maxHeight > 1080 ? `Best available (${maxHeight}p)` : `Best available (${maxHeight}p)`;
+      qualitySelect.appendChild(bestOpt);
+
+      qualitySelect.value = "best";
+      qualitySelect.disabled = false;
+    }
+
+    async function lookupVideoMeta() {
+      const youtubeUrl = urlInput.value.trim();
+      if (!youtubeUrl) return;
+
+      qualitySelect.disabled = true;
+      qualitySelect.innerHTML = "<option>Checking video...</option>";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/meta`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ youtubeUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not read that video.");
+
+        videoMeta = data;
+        populateQualityOptions(data.maxHeight, data.minQualityHeight);
+      } catch (err) {
+        qualitySelect.innerHTML = `<option>${err.message || "Couldn't check quality"}</option>`;
+        videoMeta = null;
+      }
+    }
+
+    urlInput.addEventListener("blur", lookupVideoMeta);
+
+    /**
+     * Auto-formats a raw digit string into MM:SS or H:MM:SS as the user
+     * types. "1509" -> "15:09". "12015" -> "1:20:15". Never fights the
+     * user's own colons if they type them manually.
+     */
+    function autoFormatTimestamp(raw) {
+      const digitsOnly = raw.replace(/[^\d]/g, "");
+      if (!digitsOnly) return "";
+      if (digitsOnly.length <= 2) return digitsOnly; // still typing seconds
+      if (digitsOnly.length <= 4) {
+        const mins = digitsOnly.slice(0, digitsOnly.length - 2);
+        const secs = digitsOnly.slice(-2);
+        return `${mins}:${secs}`;
+      }
+      const secs = digitsOnly.slice(-2);
+      const mins = digitsOnly.slice(-4, -2);
+      const hours = digitsOnly.slice(0, digitsOnly.length - 4);
+      return `${hours}:${mins}:${secs}`;
+    }
+
+    function attachTimestampAutoFormat(input) {
+      input.addEventListener("input", (e) => {
+        const cursorWasAtEnd = e.target.selectionStart === e.target.value.length;
+        e.target.value = autoFormatTimestamp(e.target.value);
+        if (cursorWasAtEnd) {
+          e.target.selectionStart = e.target.value.length;
+          e.target.selectionEnd = e.target.value.length;
+        }
+      });
+    }
+
+    buildFieldsBtn.addEventListener("click", () => {
+      const count = Math.max(1, Math.min(20, parseInt(clipCountInput.value, 10) || 1));
+      clipCountInput.value = count;
+      clipFieldsEl.innerHTML = "";
+
+      for (let i = 1; i <= count; i++) {
+        const block = document.createElement("div");
+        block.className = "clip-block";
+        block.innerHTML = `
+          <div class="clip-label">CLIP ${i}</div>
+          <div class="row">
+            <div>
+              <label>Start</label>
+              <input type="text" class="clip-start" placeholder="2:15" />
+            </div>
+            <div>
+              <label>End</label>
+              <input type="text" class="clip-end" placeholder="3:00" />
+            </div>
+          </div>
+        `;
+        clipFieldsEl.appendChild(block);
+      }
+
+      document.querySelectorAll(".clip-start, .clip-end").forEach(attachTimestampAutoFormat);
+      submitBtn.disabled = false;
+      statusEl.textContent = "";
+      statusEl.className = "status";
+    });
+
+    submitBtn.addEventListener("click", async () => {
+      const youtubeUrl = urlInput.value.trim();
+      const starts = Array.from(document.querySelectorAll(".clip-start")).map((i) => i.value.trim());
+      const ends = Array.from(document.querySelectorAll(".clip-end")).map((i) => i.value.trim());
+
+      if (!youtubeUrl) {
+        statusEl.textContent = "Paste a YouTube link first.";
+        statusEl.className = "status error";
+        return;
+      }
+      if (!videoMeta) {
+        statusEl.textContent = "Checking video quality — try again in a moment.";
+        statusEl.className = "status error";
+        await lookupVideoMeta();
+        return;
+      }
+      if (starts.some((s) => !s) || ends.some((e) => !e)) {
+        statusEl.textContent = "Fill in every clip's start and end time.";
+        statusEl.className = "status error";
+        return;
+      }
+
+      const clips = starts.map((start, i) => ({ start, end: ends[i] }));
+      const isSingle = clips.length === 1;
+      const quality = qualitySelect.value || "best";
+
+      submitBtn.disabled = true;
+      statusEl.className = "status";
+      statusEl.textContent = isSingle
+        ? "Cutting your clip... this can take a bit."
+        : `Cutting ${clips.length} clips... this can take a few minutes.`;
+
+      try {
+        const endpoint = isSingle ? "/api/clip" : "/api/clips";
+        const body = isSingle
+          ? JSON.stringify({ youtubeUrl, start: clips[0].start, end: clips[0].end, quality })
+          : JSON.stringify({ youtubeUrl, clips, quality });
+
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Request failed (${res.status})`);
+        }
+
+        const blob = await res.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = isSingle ? "clip.mp4" : "clips.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(downloadUrl);
+
+        statusEl.textContent = "Done — check your downloads.";
+      } catch (err) {
+        statusEl.textContent = err.message || "Something went wrong.";
+        statusEl.className = "status error";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Build the default single-clip field on page load.
+    buildFieldsBtn.click();
+  </script>
+</body>
+</html>
