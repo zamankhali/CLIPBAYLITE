@@ -4,10 +4,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     ca-certificates \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
+
+# YouTube now requires solving a small JavaScript puzzle before releasing
+# most video formats. yt-dlp needs an actual JS engine installed to do
+# this -- without one, YouTube only offers thumbnail images, which is
+# exactly the "Only images are available for download" error this fixes.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+ENV PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /app
 COPY package*.json ./
