@@ -4,6 +4,20 @@ import path from 'node:path';
 
 const YTDLP_BIN = process.env.YTDLP_BIN || 'yt-dlp';
 const TMP_DIR = path.resolve(process.env.TMP_DIR || './tmp');
+const COOKIES_PATH = path.resolve('./cookies.txt');
+
+// If a cookies.txt file exists, pass it to every yt-dlp call. This makes
+// requests look like they're coming from a logged-in browser instead of
+// an anonymous server -- needed because YouTube blocks/rate-limits plain
+// requests from cloud hosting IPs (Render, AWS, etc.) with a
+// "confirm you're not a bot" error.
+function withCookies(args) {
+  if (fs.existsSync(COOKIES_PATH)) {
+    return ['--cookies', COOKIES_PATH, ...args];
+  }
+  console.warn('[cutter] No cookies.txt found -- requests may be blocked by YouTube.');
+  return args;
+}
 
 // Minimum floor -- we never offer anything below this, per spec.
 export const MIN_QUALITY_HEIGHT = 480;
@@ -29,12 +43,12 @@ function runYtDlp(args) {
  * quality dropdown that never promises a resolution the source doesn't have.
  */
 export async function fetchVideoMeta(youtubeUrl) {
-  const { stdout } = await runYtDlp([
+  const { stdout } = await runYtDlp(withCookies([
     '--dump-json',
     '--no-playlist',
     '--skip-download',
     youtubeUrl,
-  ]);
+  ]));
   const info = JSON.parse(stdout);
 
   const heights = (info.formats || [])
@@ -78,7 +92,7 @@ export async function downloadClip(youtubeUrl, startSeconds, endSeconds, jobId, 
   const heightFilter = qualityHeight ? `[height<=${qualityHeight}]` : '';
   const formatSelector = `bv*${heightFilter}+ba/b${heightFilter}`;
 
-  await runYtDlp([
+  await runYtDlp(withCookies([
     '--no-playlist',
     '--download-sections',
     section,
@@ -89,7 +103,7 @@ export async function downloadClip(youtubeUrl, startSeconds, endSeconds, jobId, 
     '-o',
     outputTemplate,
     youtubeUrl,
-  ]);
+  ]));
 
   const expectedPath = path.join(jobDir, 'clip.mp4');
   if (!fs.existsSync(expectedPath)) {
@@ -101,4 +115,4 @@ export async function downloadClip(youtubeUrl, startSeconds, endSeconds, jobId, 
 export function cleanupJobDir(jobId) {
   const dir = path.join(TMP_DIR, jobId);
   fs.rm(dir, { recursive: true, force: true }, () => {});
-}
+    }
